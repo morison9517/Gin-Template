@@ -1,0 +1,126 @@
+{{/* ==========================================================================
+   トップページ。base.html の型紙を受け継いで「中身だけ」書く。
+
+   ▼ 書き方の決まり
+
+     ・{{ define "content" }} ～ {{ end }} で挟んだ中身が、
+       base.html の {{ block "content" . }} の場所に差し込まれる。
+     ・名前は base.html 側と一致していること(content / head_extra / scripts)。
+     ・★define の外に書いたものは表示されない。中身は必ず define の中に書く。
+
+   ▼ 新しいページを作るときは、このファイルをコピーして中身を書き換えるのが早い。
+     ファイルをここ(pages/)に置けば、それだけで使えるようになる。
+     登録作業は不要(仕組みは internal/view/render.go)。
+========================================================================== */}}
+
+{{ define "content" }}
+
+<section class="hero">
+  <h1>セットアップ完了 🎉</h1>
+  <p class="lead">この画面が見えていれば、Gin・Docker・DBの接続まで動いています。</p>
+</section>
+
+<section class="card-grid">
+  <article class="card">
+    <h2>いまの状態</h2>
+    <dl class="status-list">
+      <dt>アプリ</dt>
+      <dd><span class="badge badge-ok">起動中</span></dd>
+
+      <dt>データベース</dt>
+      <dd>
+        {{/* DBStatus は handlers/page.go の index() から渡された値 */}}
+        {{ if eq .DBStatus "ok" }}
+        <span class="badge badge-ok">接続OK</span>
+        {{ else }}
+        <span class="badge badge-ng">未接続</span>
+        <small>{{ .DBMessage }}</small>
+        {{ end }}
+      </dd>
+
+      <dt>ログイン機能</dt>
+      <dd>
+        {{ if .AuthEnabled }}
+        <span class="badge badge-ok">有効</span>
+        {{ else }}
+        <span class="badge badge-off">無効</span>
+        {{ end }}
+      </dd>
+
+      <dt>ログイン状態</dt>
+      <dd>
+        {{ if .CurrentUser }}
+        <span class="badge badge-ok">{{ .CurrentUser.Username }} さんとしてログイン中</span>
+        {{ else }}
+        <span class="badge badge-off">未ログイン</span>
+        {{ end }}
+      </dd>
+    </dl>
+  </article>
+
+  <article class="card">
+    <h2>担当ごとに触る場所</h2>
+    <p class="note">分けてあるので、基本的にファイルの取り合いになりません。</p>
+    <table class="role-table">
+      <thead>
+        <tr>
+          <th>担当</th>
+          <th>触る場所</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>見た目</td>
+          <td><code>web/templates/</code> と <code>web/static/css/</code></td>
+        </tr>
+        <tr>
+          <td>画面の動き</td>
+          <td><code>web/static/js/</code></td>
+        </tr>
+        <tr>
+          <td>データの形</td>
+          <td><code>internal/models/</code></td>
+        </tr>
+        <tr>
+          <td>URLと処理</td>
+          <td><code>internal/handlers/</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </article>
+</section>
+
+{{/* ==========================================================================
+   ここから下は、画面とサーバーのやり取りが通っているかを確かめるサンプル。
+   ページを切り替えずにデータだけをやり取りしている(相手は handlers/api.go)。
+   プロダクトが決まったら、この節ごと消して作り直す。
+   ========================================================================== */}}
+<section class="card">
+  <h2>動作確認用のサンプル(Todo)</h2>
+  <p class="note">
+    追加・完了・削除ができれば、画面 ↔ サーバー ↔ DB が全部つながっています。
+  </p>
+
+  <form id="todo-form" class="inline-form-row">
+    <input
+      type="text"
+      id="todo-title"
+      placeholder="やることを入力"
+      maxlength="200"
+      required
+    />
+    <button type="submit" class="btn btn-primary">追加</button>
+  </form>
+
+  <ul id="todo-list" class="todo-list"></ul>
+</section>
+
+{{ end }}
+
+{{/* このページだけで使うJSを読み込む。
+     base.html の {{ block "scripts" . }} の場所に差し込まれる。
+     ★全ページ共通の処理は main.js、ページ固有の処理はこの形で分ける。
+       こうしておくと、担当が違う人同士で同じファイルを触らずに済む。 */}}
+{{ define "scripts" }}
+<script src="/static/js/todo.js"></script>
+{{ end }}
