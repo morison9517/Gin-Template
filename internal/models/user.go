@@ -91,3 +91,29 @@ func (u *User) CheckPassword(password string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
 	return err == nil
 }
+
+// =============================================================================
+// ★ここから自分たちの表を書きはじめる
+//
+//	新しいモデルを作ったら internal/database/database.go の Migrate() の
+//	リストに1行足すこと。忘れると表が作られない。
+//
+//	type Post struct {
+//	    ID    uint   `gorm:"primaryKey" json:"id"`
+//	    Title string `gorm:"size:200;not null" json:"title"`
+//
+//	    // ▼ 他の表と紐付けたいとき(「この投稿は誰が書いたか」)
+//	    //
+//	    //   *uint にすると「持ち主なし」も許される。
+//	    //   ログイン機能をOFFにしても動くようにしたいときはこうする。
+//	    UserID *uint `gorm:"index" json:"user_id,omitempty"`
+//
+//	    // 番号から実物を引くショートカット。
+//	    // database.DB.Preload("User").Find(&posts) と書くと post.User に作者が入る。
+//	    // constraint:OnDelete:CASCADE = ユーザーが消えたら投稿も一緒に消す。
+//	    User *User `gorm:"constraint:OnDelete:CASCADE" json:"-"`
+//
+//	    CreatedAt time.Time `json:"created_at"`
+//	}
+//
+// =============================================================================

@@ -22,7 +22,10 @@ tmp_dir = "tmp"
   bin = "./tmp/server"
 
   # .go を保存したときだけ作り直す。
-  include_ext = ["go"]
+  # html も見ている理由:internal/demo/page.html はアプリ本体に取り込まれる
+  # (go:embed)ので、直したら作り直さないと反映されない。
+  # web/ は下の exclude_dir で除外しているため、普通のテンプレートはここに含まれない。
+  include_ext = ["go", "html"]
 
   # 見張らなくてよい場所。ここが多いほど動作が軽くなる。
   exclude_dir = ["tmp", "web", "docs", ".git", ".vscode"]

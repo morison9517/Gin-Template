@@ -27,6 +27,67 @@ docker compose up --build
 
 ---
 
+## 最初に出るデモページについて
+
+起動して `/` を開くと「セットアップ完了 🎉」というデモページが出ます。
+**これは消さなくて大丈夫です。** DjangoやRailsの初期画面と同じ仕組みで、条件を満たすと自動で出なくなります。
+
+| | |
+| --- | --- |
+| 出る条件 | 開発モード **かつ** `internal/handlers/page.go` にまだ `"/"` が無いとき |
+| 消える条件 | `page.go` の `r.GET("/", index)` のコメントを外す(それだけ) |
+| 本番 | `APP_ENV=production` では最初から出ない。デモ用の表(`demo_todos`)もDBに作られない |
+| あとで見たい | `/__demo` で開ける(開発モードのときだけ) |
+
+```go
+// internal/handlers/page.go のこの行のコメントを外した瞬間、デモは出なくなります
+func RegisterPageRoutes(r *gin.Engine) {
+	r.GET("/", index)
+	r.GET("/health", health)
+}
+```
+
+### ⚠ Gin版だけの注意点:URLの二重登録でアプリが落ちる
+
+**Ginは同じURLを2回登録すると、起動した瞬間にプログラムが止まります。**
+
+```
+panic: handlers are already registered for path '/'
+```
+
+FlaskやDjangoは「先に登録したほうが勝つ」だけで済みますが、**Ginは落ちます。**
+そのため、デモ側は「`/` が空いているかどうか」を必ず先に確認してから登録しています。
+
+```go
+// internal/demo/demo.go
+if !hasRoute(r, http.MethodGet, "/") {
+	r.GET("/", index)   // ← 空いているときだけ引き受ける
+}
+```
+
+この `hasRoute()` の確認を消すと、**自分たちのトップページを作った日にアプリが起動しなくなります。**
+`internal/demo/` を触るときは、ここだけ残してください。
+
+> 逆に言うと、`page.go` に `r.GET("/", index)` を足すのは安全です。
+> デモ側が自動で譲るので、二重登録にはなりません。
+
+### デモの画面は1枚で完結しています
+
+デモの画面(`internal/demo/page.html`)は、`base.html` も `style.css` も `main.js` も使いません。見た目も動きも全部そのファイルの中に入っています。
+
+デモの役目は「セットアップが動いているか」を見せる**計器**です。計器が `base.html` に頼っていると、`base.html` を自分たちの見た目に作り替えた日に、この画面まで一緒に壊れます。しかも穴(block)の名前を変えただけだとエラーも出ず、真っ白になるだけなので「アプリが壊れた?」と勘違いします。1枚完結にしておけば、`base.html` を好きなだけ作り替えても、この計器だけは最後まで正しく動きます。
+
+そのため `page.html` は `web/templates/pages/` ではなく `internal/demo/` に置いてあります(あそこに置くと共通の仕組みが自動で拾って `base.html` と合体させてしまうため)。読み込みは `go:embed` でアプリ本体に取り込んでいます。
+
+ページの書き方の見本は `web/templates/pages/login.html` を見てください(`base.html` を継いだ本物のページです)。
+
+### デモが本当に不要になったら(2か所)
+
+1. `internal/demo/` フォルダを削除
+2. `internal/router/router.go` の「デモ」の数行を削除
+
+---
+
 ## 使っている技術
 
 | 分類 | 技術 |
@@ -56,6 +117,8 @@ case_gin/
 │   │   ├── page.go           画面(HTML)を返す
 │   │   ├── auth.go           ログイン・新規登録
 │   │   └── api.go            JavaScript向けにデータだけ返す
+│   ├── demo/               動作確認用のデモ(開発モード限定・触らない)
+│   │                       画面(page.html)も1枚完結でここに入っている
 │   ├── router/             受付をまとめて組み立てる(土台)
 │   └── view/               型紙(base.html)を使う仕組み(土台)
 │
@@ -107,7 +170,7 @@ case_gin/
 
 ## ページを1枚増やす手順
 
-1. **`web/templates/pages/` にHTMLを1枚置く**(`index.html` をコピーするのが早い)
+1. **`web/templates/pages/` にHTMLを1枚置く**(`demo.html` をコピーするのが早い)
 
    ```html
    {{ define "content" }}
@@ -121,7 +184,7 @@ case_gin/
 
    ```go
    func RegisterPageRoutes(r *gin.Engine) {
-       r.GET("/", index)
+       r.GET("/health", health)
        r.GET("/mypage", myPage)   // ← 1行足す
    }
 

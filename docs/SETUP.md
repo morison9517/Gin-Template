@@ -140,7 +140,6 @@ docker compose exec web bash
 func Migrate() error {
 	return DB.AutoMigrate(
 		&models.User{},
-		&models.Todo{},
 		&models.Room{},   // ← 足すのはこの1行だけ
 	)
 }
@@ -212,7 +211,8 @@ MySQL 8 のログイン方式のためです。接続設定の **Driver properti
 
 ### 見ておくと理解が早いところ
 
-- `users` / `todos` テーブル → `internal/models/` に書いた設計図がそのまま形になっています
+- `users` テーブル → `internal/models/` に書いた設計図がそのまま形になっています
+- `demo_todos` テーブル → デモ用。`demo_` が付いているものはデモのものなので、消しても構いません
 - `users` の `password_hash` 列 → 保存されているのが**元に戻せない文字列**であることが目で確認できます
 
 ---

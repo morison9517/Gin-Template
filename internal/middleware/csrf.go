@@ -86,7 +86,8 @@ func CSRF() gin.HandlerFunc {
 // rejectCSRF = 整理券が無い/違うときの返事。
 func rejectCSRF(c *gin.Context) {
 	// APIならJSONで返す。HTMLを返すとJavaScript側が読めずに混乱する。
-	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+	path := c.Request.URL.Path
+	if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/__demo/api/") {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"error": "整理券(CSRFトークン)が正しくありません。ページを再読み込みしてください。",
 		})

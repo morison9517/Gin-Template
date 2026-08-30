@@ -16,6 +16,13 @@
 //
 //	router.go は、それぞれの登録係を呼ぶだけ。普段は触らない。
 //
+// ▼ ★トップページはまだ空いています
+//
+//	今 "/" を開くとデモページが出ますが、それは「ここにまだ "/" が
+//	無いから」です。下の見本のように r.GET("/", index) を足せば、
+//	自分たちの画面に入れ替わります。
+//	デモを消す作業は要りません(仕組みは internal/demo/demo.go)。
+//
 // =============================================================================
 package handlers
 
@@ -23,9 +30,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-
-	"case_gin/internal/database"
-	"case_gin/internal/view"
 )
 
 // RegisterPageRoutes = このファイルが担当するURLを登録する。
@@ -35,53 +39,28 @@ import (
 //  2. ここに r.GET("/URL", 関数名) を1行足す
 //  3. その関数を下に書く
 func RegisterPageRoutes(r *gin.Engine) {
-	r.GET("/", index)
+	// ★ここから書きはじめる(コメントを外して、下の index も有効にする)
+	// r.GET("/", index)
+
 	r.GET("/health", health)
 }
 
-// index = トップページ。
-func index(c *gin.Context) {
-	dbStatus, dbMessage := checkDB()
-
-	// c.HTML(ステータス, 使うファイル名, 画面に渡す情報)
-	//
-	//	"index.html" は web/templates/pages/index.html のこと。
-	//	view.Page(...) が、ここに書いた情報 + 共通の情報 をまとめてくれる。
-	c.HTML(http.StatusOK, "index.html", view.Page(c, gin.H{
-		"Title":     "ホーム",
-		"DBStatus":  dbStatus,
-		"DBMessage": dbMessage,
-	}))
-}
-
-// checkDB = DBに繋がるか実際に試す。
+// =============================================================================
+// ★トップページの見本(コメントを外して使う)
 //
-// 「返事してください」という最小の確認を送り、返事が来るかで判定している。
+//	view.Page(c, ...) が、ここに書いた情報 + 共通の情報 をまとめてくれる。
+//	"index.html" は web/templates/pages/index.html のこと。
 //
-// エラーで落とさず画面は出す理由:
-// DBが起動しきっていないだけでトップページが真っ白になると原因が分かりにくい。
-// 画面は出しつつ「DBだけ未接続」と伝えたほうが切り分けが速い。
-func checkDB() (string, string) {
-	sqlDB, err := database.DB.DB()
-	if err != nil {
-		return "ng", truncate(err.Error())
-	}
-
-	if err := sqlDB.Ping(); err != nil {
-		return "ng", truncate(err.Error())
-	}
-
-	return "ok", ""
-}
-
-// truncate = エラー文が数百文字になることがあるので、先頭だけにする。
-func truncate(s string) string {
-	const limit = 120
-	if len(s) <= limit {
-		return s
-	}
-	return s[:limit] + "..."
-}
+//	func index(c *gin.Context) {
+//		c.HTML(http.StatusOK, "index.html", view.Page(c, gin.H{
+//			"Title": "ホーム",
+//		}))
+//	}
+//
+//	※ 使うときは上の import に "case_gin/internal/view" を足すこと。
+//	  動く見本は internal/demo/demo.go にあります。
+//
+// =============================================================================
 
 // health = 動作確認用。
 //

@@ -12,160 +12,33 @@
 //
 // ▼ JavaScript側との対応
 //
-//	web/static/js/todo.js から呼ばれている。
 //	送受信の作法(整理券を付ける、エラーを拾う)は main.js の api がやるので、
-//	使う側は api.post("/api/todos", { title: "牛乳" }) と書くだけでよい。
+//	JS側は api.post("/api/○○", { ... }) と書くだけでよい。
 //
-// ▼ 以下はサンプル。プロダクトが決まったら自分たちのAPIに書き換える。
+// ▼ ★動く見本
+//
+//	internal/demo/api.go に一式(一覧・追加・切り替え・削除)があります。
+//	同じ形をここにコピーして、自分たちのデータ向けに直すのが速いです。
 //
 // =============================================================================
 package handlers
 
 import (
-	"net/http"
-	"strconv"
-	"strings"
-
 	"github.com/gin-gonic/gin"
-
-	"case_gin/internal/database"
-	"case_gin/internal/middleware"
-	"case_gin/internal/models"
 )
 
 // RegisterAPIRoutes = JavaScript向けのURLを登録する。
 func RegisterAPIRoutes(r *gin.Engine) {
+	// r.Group("/api") = 「この先のURLは全部 /api で始まる」というまとめ方。
+	// 1つずつ "/api/..." と書かなくて済み、書き間違いも減る。
 	api := r.Group("/api")
 
 	// ★ログイン必須にしたい場合は、この1行を足す:
 	//     api.Use(middleware.RequireLoginAPI())
-	//   今はログインしなくても試せるようにしてある。
 
-	api.GET("/todos", listTodos)
-	api.POST("/todos", createTodo)
-	api.PATCH("/todos/:id", toggleTodo)
-	api.DELETE("/todos/:id", deleteTodo)
-}
+	// ★ここから書きはじめる
+	// api.GET("/posts", listPosts)
+	// api.POST("/posts", createPosts)
 
-// listTodos = 一覧を返す。
-func listTodos(c *gin.Context) {
-	var todos []models.Todo
-
-	// Order(...) で新しい順。Limit で取りすぎを防ぐ。
-	// ★上限が無いと、データが増えたときに画面が固まる。
-	if err := database.DB.Order("id DESC").Limit(100).Find(&todos).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "取得に失敗しました。"})
-		return
-	}
-
-	// ★ここで返す形が、そのままJavaScript側で受け取る形になる。
-	//   項目名(id / title / is_done)は models/todo.go の json タグで決まっている。
-	c.JSON(http.StatusOK, gin.H{"todos": todos})
-}
-
-// createTodo = 1件追加する。
-func createTodo(c *gin.Context) {
-	// ▼ 送られてきたJSONを受け取るための入れ物
-	//
-	//	{"title": "牛乳を買う"} という形で届くので、
-	//	json:"title" で「JSONの title をここに入れる」と指示している。
-	//	この関数の中でしか使わないので、ここで定義している。
-	var input struct {
-		Title string `json:"title"`
-	}
-
-	// ShouldBindJSON = 届いたJSONを上の入れ物に流し込む。
-	// 形が違えばエラーになるので、変な値のまま進まずに済む。
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "送信内容の形式が正しくありません。"})
-		return
-	}
-
-	title := strings.TrimSpace(input.Title)
-
-	// ★入力チェックは必ずサーバー側でもやる。
-	//   画面側(HTMLのrequiredやJS)のチェックは、開発者ツールから素通りできる。
-	if title == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "内容を入力してください。"})
-		return
-	}
-	if len([]rune(title)) > 200 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "200文字以内で入力してください。"})
-		return
-	}
-
-	todo := models.Todo{Title: title}
-
-	// ログインしていれば持ち主を記録する。していなければ持ち主なし。
-	if user := middleware.CurrentUser(c); user != nil {
-		todo.UserID = &user.ID
-	}
-
-	if err := database.DB.Create(&todo).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存に失敗しました。"})
-		return
-	}
-
-	// 201 = 「新しく作った」を表す返事。
-	c.JSON(http.StatusCreated, gin.H{"todo": todo})
-}
-
-// toggleTodo = 済み / 未済 を切り替える。
-func toggleTodo(c *gin.Context) {
-	// c.Param("id") = URLの :id の部分。/api/todos/3 なら "3"。
-	todo, ok := findTodo(c)
-	if !ok {
-		return
-	}
-
-	todo.IsDone = !todo.IsDone
-
-	// Save = 中身をまるごと上書き保存する。
-	if err := database.DB.Save(&todo).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新に失敗しました。"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"todo": todo})
-}
-
-// deleteTodo = 1件消す。
-func deleteTodo(c *gin.Context) {
-	todo, ok := findTodo(c)
-	if !ok {
-		return
-	}
-
-	if err := database.DB.Delete(&todo).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "削除に失敗しました。"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"deleted": todo.ID})
-}
-
-// findTodo = URLの番号から1件取り出す。見つからなければ返事まで済ませる。
-//
-// 2つ目の戻り値が false のときは、呼び出し側はそのまま return すればよい。
-// (同じ「見つかりません」の処理を各所に書かないための工夫)
-func findTodo(c *gin.Context) (models.Todo, bool) {
-	var todo models.Todo
-
-	// ★URLの :id は文字として届くので、必ず数字に変換してから使う。
-	//   変換せずにそのままDBへ渡すと、URLに細工をされてDBを操作される
-	//   (SQLインジェクション)危険がある。
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "見つかりませんでした。"})
-		return todo, false
-	}
-
-	// Where("id = ?", id) の ? に値を当てはめる書き方なら、
-	// 何が入っていても「値」として扱われるので安全。
-	if err := database.DB.Where("id = ?", id).First(&todo).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "見つかりませんでした。"})
-		return todo, false
-	}
-
-	return todo, true
+	_ = api // ★URLを1つでも登録したら、この行は消す
 }

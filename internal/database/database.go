@@ -77,10 +77,14 @@ func Connect(cfg *config.Config) error {
 //	そのときは作り直す(docs/SETUP.md の「DBを作り直す」を参照)。
 //
 // ★新しいモデルを作ったら、下のリストに1行足すこと。忘れると表が作られない。
+//
+// ※ デモ用の表(demo_todos)はここには書かない。
+//
+//	開発モードのときだけ internal/demo/demo.go が自分で用意するので、
+//	本番のDBには作られない。
 func Migrate() error {
 	return DB.AutoMigrate(
 		&models.User{},
-		&models.Todo{},
 	)
 }
 
@@ -90,9 +94,13 @@ func Migrate() error {
 // 実行方法は docs/SETUP.md にある。
 func Reset() error {
 	// ★消す順番が大事
-	//   todos は users を参照しているので、参照している側から先に消す。
+	//   表どうしが紐付いている場合、参照している側(子)から先に消す。
 	//   逆にすると「まだ使われている」と怒られて消せない。
-	if err := DB.Migrator().DropTable(&models.Todo{}, &models.User{}); err != nil {
+	//
+	//   "demo_todos" はデモ用の表。デモは本番のどの表とも紐付いていないので
+	//   順番は関係ない。無ければ何も起きないので、そのままでよい。
+	//   internal/demo/ を削除したら、この "demo_todos" も消してよい。
+	if err := DB.Migrator().DropTable("demo_todos", &models.User{}); err != nil {
 		return err
 	}
 	return Migrate()

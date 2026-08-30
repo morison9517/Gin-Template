@@ -27,6 +27,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"case_gin/internal/config"
+	"case_gin/internal/demo"
 	"case_gin/internal/handlers"
 	"case_gin/internal/middleware"
 	"case_gin/internal/view"
@@ -89,6 +90,17 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	// AUTH_ENABLED が false なら取り付けない(コードを消さずにOFFにできる)。
 	if cfg.AuthEnabled {
 		handlers.RegisterAuthRoutes(r)
+	}
+
+	// --- デモ(動作確認用のページ) ---
+	// ★必ず最後に取り付ける。
+	//   「自分たちのトップページが既にあるか」を見てから動くので、
+	//   先に取り付けると判定できず、URLの二重登録でGinが起動時に落ちる。
+	//   開発モードのときだけ。本番では取り付けないので絶対に出ない。
+	if !cfg.IsProduction() {
+		if err := demo.Register(r, cfg); err != nil {
+			return nil, err
+		}
 	}
 
 	return r, nil
