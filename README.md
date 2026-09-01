@@ -96,7 +96,7 @@ if !hasRoute(r, http.MethodGet, "/") {
 | バック | Go 1.26 / Gin / GORM |
 | DB | MySQL 8.4(確認は DBeaver、ポートは **3308**) |
 | 環境 | Docker Compose / air(保存したら自動で作り直す道具) |
-| 本番 | Nginx / AWS |
+| 本番 | Nginx / AWS(**`compose.prod.yml` に構成済み。本番イメージは約48MB**) |
 
 ---
 
@@ -129,10 +129,14 @@ case_gin/
 │   │   └── partials/           型紙が長くなったら部品を切り出す置き場
 │   └── static/                 CSS / JS / 画像
 │
-├── docs/                   チームで見る手順書
+├── media/                  利用者が上げたファイル(★中身はGitHubに上げない)
+│
+├── docs/                   チームで見る手順書(SETUP / Gohelp / DEPLOY)
 ├── tools/                  開発中だけ使う小道具スクリプト
 │
-├── compose.yml             アプリとDBをまとめて動かす段取り表
+├── compose.yml             アプリとDBをまとめて動かす段取り表(開発用)
+├── compose.prod.yml        本番用の段取り表(★開発中は使わない)
+├── docker/nginx/           本番でCSSと画像を配るNginxの設定
 ├── Dockerfile              箱を組み立てるレシピ
 ├── .air.toml               保存したら自動で作り直す設定
 ├── go.mod / go.sum         買い物リストとレシート(全員が同じ部品を使うための記録)
@@ -170,7 +174,7 @@ case_gin/
 
 ## ページを1枚増やす手順
 
-1. **`web/templates/pages/` にHTMLを1枚置く**(`demo.html` をコピーするのが早い)
+1. **`web/templates/pages/` にHTMLを1枚置く**(`login.html` をコピーするのが早い)
 
    ```html
    {{ define "content" }}
@@ -265,29 +269,31 @@ base.html(型紙)                    pages/index.html(中身)
 
 ---
 
-## Flask版(case_flask)との対応表
+## 3つのテンプレートの対応表
 
-同じ構成で作ってあるので、片方が分かればもう片方も読めます。
+同じ構成・同じ画面で作ってあるので、1つ分かれば他も読めます。
 
-| やること | Flask版 | Gin版 |
-| --- | --- | --- |
-| 起動の入口 | `src/web/app.py` | `cmd/server/main.go` |
-| 設定 | `config.py` | `internal/config/` |
-| 共用の道具 | `extensions.py` | `internal/database/` |
-| データの形 | `models.py` | `internal/models/` |
-| 画面を返す | `routes.py` | `internal/handlers/page.go` |
-| ログイン | `auth/routes.py` | `internal/handlers/auth.go` |
-| 型紙 | `templates/base.html`(`extends`) | `web/templates/layouts/base.html`(`define`) |
-| 表を作る | `flask init-db` を実行 | **不要**(起動時に自動) |
-| 表を作り直す | `flask drop-db` → `init-db` | `go run ./cmd/server -reset-db` |
-| アプリのポート | 5000 | 8080 |
-| DBのポート | 3307 | 3308 |
+| やること | Flask版 | Gin版 | Django版 |
+| --- | --- | --- | --- |
+| 起動の入口 | `src/web/app.py` | `cmd/server/main.go` | `manage.py` + `config/` |
+| 設定 | `config.py` | `internal/config/` | `config/settings.py` |
+| データの形 | `models.py` | `internal/models/` | `main/models.py` |
+| 画面を返す | `routes.py` | `handlers/page.go` | `main/views.py` |
+| ログイン | `auth/routes.py` | `handlers/auth.go` | `accounts/views.py` |
+| 型紙 | `base.html`(Jinja) | `base.html`(Go) | `base.html`(Django) |
+| 表を作る | `flask init-db` | 起動時に自動 | 起動時に自動 |
+| 表の形を変える | 作り直し(データ消滅) | 列の追加のみ可 | **データを保ったまま変更可** |
+| 管理画面 | 無い | 無い | **`/admin/`** |
+| アプリのポート | 5000 | 8080 | 8000 |
+| DBのポート | 3307 | 3308 | 3309 |
+| 本番イメージ | 438MB | **48MB** | 913MB |
 
-> ポートをずらしてあるので、**Flask版とGin版を同時に起動しても衝突しません。**
+> ポートをずらしてあるので、**3つ同時に起動しても衝突しません。**
 
 ---
 
 ## ドキュメント
 
 - **[docs/SETUP.md](docs/SETUP.md)** — 環境構築、日々の操作、DBeaverでの接続、困ったときの対処
+- **[docs/Gohelp.md](docs/Gohelp.md)** — Goの書き方(コーディング経験者向けの早わかり)
 - **[docs/DEPLOY.md](docs/DEPLOY.md)** — 本番に出す手順
