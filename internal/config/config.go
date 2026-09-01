@@ -40,6 +40,44 @@ type Config struct {
 	SecretKey   string // ログイン状態をブラウザに預けるときの割り印
 	AuthEnabled bool   // ログイン機能を使うか
 
+	// ▼ ★本番でいちばんハマる設定
+	//
+	//	true にすると「HTTPSのときだけログイン状態を持ち歩く」という意味になる。
+	//	本番は必ずHTTPSにするので true が正解。
+	//
+	//	★ただし、まだHTTPSにしていない状態(http:// のまま)で true にすると、
+	//	  ログイン自体は成功しているのに、次のページで必ずログイン画面に
+	//	  戻されます。エラーも出ないので原因がまず分かりません。
+	//	  「ログインできない」と思ったら、まずここを疑ってください。
+	//
+	//	デプロイの練習でHTTPのまま動かすときだけ .env に
+	//	    SECURE_COOKIES=false
+	//	と書いて一時的に切る。★HTTPSにしたら必ず true に戻すこと。
+	SecureCookies bool
+
+	// ▼ Nginxを前に置くときに必要な設定
+	//
+	//	Nginxを通すと、Ginから見た相手はNginxになってしまう。
+	//	本当のアクセス元は封筒の隅(ヘッダー)に書いてあるので、
+	//	「そのヘッダーを信じてよい相手」をここで指定する。
+	//
+	//	郵便に例えると、転送されてきた手紙の差出人が
+	//	「転送してくれた人」になってしまう状態を直す設定です。
+	//
+	//	★空にすると誰も信用しない(開発中はこちら)。
+	//	  信用する相手を書かないまま外に晒すと、利用者がヘッダーを
+	//	  詐称してアクセス元を偽れてしまうので、必ず限定すること。
+	TrustedProxies []string
+
+	// 利用者が上げたファイル(プロフィールアイコンなど)の保存先。
+	//
+	//	★web/static と分ける理由
+	//	  static … 自分たちが用意したファイル。Gitに入れる。
+	//	  media  … 利用者が後から上げたファイル。Gitに入れない。
+	//	  static は箱を作り直せば元通りだが、media は消したら戻らない。
+	//	  だから本番では media だけを箱の外の保管庫に置く。
+	UploadDir string
+
 	DBHost     string
 	DBPort     string
 	DBName     string
@@ -66,6 +104,10 @@ func Load() *Config {
 		Port:        env("PORT", "8080"),
 		SecretKey:   env("SECRET_KEY", "dev-secret-key-change-me"),
 		AuthEnabled: envBool("AUTH_ENABLED", true),
+
+		SecureCookies:  envBool("SECURE_COOKIES", true),
+		TrustedProxies: envList("TRUSTED_PROXIES"),
+		UploadDir:      env("UPLOAD_DIR", "media"),
 
 		DBHost:     env("DB_HOST", "db"),
 		DBPort:     env("DB_PORT", "3306"),
@@ -118,6 +160,27 @@ func env(key, fallback string) string {
 //
 // .env に書けるのは文字だけなので、"false" をそのまま使うと
 // 「中身のある文字 = true」と判定されてしまう。その事故を防ぐ。
+// envList = カンマ区切りの環境変数を一覧にする。
+//
+// 空なら nil を返す。nil は「誰も信用しない」の意味になる。
+//
+//	TRUSTED_PROXIES=172.18.0.0/16   → ["172.18.0.0/16"]
+//	TRUSTED_PROXIES=(未設定)         → nil
+func envList(key string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+
+	var out []string
+	for _, part := range strings.Split(value, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func envBool(key string, fallback bool) bool {
 	value := os.Getenv(key)
 	if value == "" {

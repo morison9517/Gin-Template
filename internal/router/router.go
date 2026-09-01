@@ -57,10 +57,15 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	r.MaxMultipartMemory = 16 << 20 // 16MB
 
 	// ★「アクセス元のIPをどこまで信用するか」の設定。
-	//   nil = 誰も信用しない(自分に直接来たアドレスだけを見る)。
-	//   本番でNginxを挟むときは、Nginxのアドレスをここに指定する。
-	//   指定しないと起動時に警告が出続ける。
-	if err := r.SetTrustedProxies(nil); err != nil {
+	//
+	//   Nginxを前に置くと、Ginから見た相手はNginxになってしまう。
+	//   本当のアクセス元はヘッダーに書いてあるが、それを無条件で信じると
+	//   利用者が自分でヘッダーを詐称してIPを偽れてしまう。
+	//   そこで「このアドレスから来たヘッダーなら信じてよい」を指定する。
+	//
+	//   開発中は空(誰も信用しない)。本番は .env の TRUSTED_PROXIES に
+	//   Nginxのアドレス範囲を書く(手順は docs/DEPLOY.md)。
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
 		return nil, err
 	}
 
@@ -77,8 +82,17 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	//   先に書くことで、画像1枚読むたびにログイン確認が走るのを避けられる。
 	r.Static("/static", staticDir)
 
+	// --- 利用者が上げたファイル(プロフィールアイコンなど) ---
+	// ★開発モードのときだけ、Ginが自分で画像を配る。
+	//   本番ではNginxが配るので登録しない(compose.prod.yml 参照)。
+	if !cfg.IsProduction() {
+		r.Static("/media", cfg.UploadDir)
+	}
+
 	// --- 全ページ共通の仕掛け(順番に意味がある) ---
-	r.Use(middleware.Session(cfg.SecretKey, cfg.IsProduction()))
+	// ★2つ目の引数が「HTTPSのときだけログイン状態を送る」の指定。
+	//   本番でも練習中はHTTPなので、.env の SECURE_COOKIES で切り替えられる。
+	r.Use(middleware.Session(cfg.SecretKey, cfg.IsProduction() && cfg.SecureCookies))
 	r.Use(middleware.LoadUser()) // セッションが読めないと誰か分からないので、後
 	r.Use(middleware.CSRF())
 

@@ -290,3 +290,4 @@ base.html(型紙)                    pages/index.html(中身)
 ## ドキュメント
 
 - **[docs/SETUP.md](docs/SETUP.md)** — 環境構築、日々の操作、DBeaverでの接続、困ったときの対処
+- **[docs/DEPLOY.md](docs/DEPLOY.md)** — 本番に出す手順
