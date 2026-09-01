@@ -143,6 +143,7 @@ case_gin/
 │
 ├── .vscode/                チーム共通のエディタ設定
 │
+├── LICENSE                 使ってよい条件(MIT)
 ├── .env                    金庫(★GitHubに上げない)
 └── .env.example            金庫の中身の見本(こちらは上げる)
 ```
@@ -297,3 +298,12 @@ base.html(型紙)                    pages/index.html(中身)
 - **[docs/SETUP.md](docs/SETUP.md)** — 環境構築、日々の操作、DBeaverでの接続、困ったときの対処
 - **[docs/Gohelp.md](docs/Gohelp.md)** — Goの書き方(コーディング経験者向けの早わかり)
 - **[docs/DEPLOY.md](docs/DEPLOY.md)** — 本番に出す手順
+
+---
+
+## ライセンス
+
+MIT License([LICENSE](LICENSE))
+
+自由に使って、改造して、公開して構いません(商用も可)。
+条件は「著作権表示を残すこと」だけです。
