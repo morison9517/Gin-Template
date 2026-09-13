@@ -6,15 +6,8 @@
 //	コード内に直接パスワードやDB住所を書くと、変更時に全ファイルを探し回るうえ、
 //	GitHubに秘密を上げてしまう。
 //
-// ▼ package config = このフォルダは config という1つのまとまり、という表札
+// ★Goでは大文字で始まる名前だけが外から使える(Config は公開、env は非公開)。
 //
-//	他のファイルから import "case_gin/internal/config" と書いて呼び出す。
-//	Goでは「1フォルダ = 1パッケージ」で、フォルダ名とパッケージ名を揃えるのが決まり。
-//
-// ▼ ★Goの大事なルール:大文字で始まる名前だけが外から使える
-//
-//	Config  → 他のパッケージから使える(公開)
-//	loadEnv → このフォルダの中だけ(非公開)
 //	「なぜか他のファイルから見えない」はほぼこれが原因。
 //
 // =============================================================================
@@ -31,9 +24,7 @@ import (
 
 // Config = アプリ全体の設定をまとめた入れ物。
 //
-// ▼ struct(構造体)= 項目に名前を付けた入れ物
-//
-//	「設定」という1つの塊にしておくと、関数に渡すときも引数1個で済む。
+// 1つの塊にしておくと、関数に渡すときも引数1個で済む。
 type Config struct {
 	Env         string // development / production
 	Port        string // アプリが待ち受ける番号
@@ -42,39 +33,26 @@ type Config struct {
 
 	// ▼ ★本番でいちばんハマる設定
 	//
-	//	true にすると「HTTPSのときだけログイン状態を持ち歩く」という意味になる。
-	//	本番は必ずHTTPSにするので true が正解。
+	//	true = HTTPSのときだけログイン状態を持ち歩く。本番は true が正解。
 	//
-	//	★ただし、まだHTTPSにしていない状態(http:// のまま)で true にすると、
-	//	  ログイン自体は成功しているのに、次のページで必ずログイン画面に
-	//	  戻されます。エラーも出ないので原因がまず分かりません。
-	//	  「ログインできない」と思ったら、まずここを疑ってください。
-	//
-	//	デプロイの練習でHTTPのまま動かすときだけ .env に
-	//	    SECURE_COOKIES=false
-	//	と書いて一時的に切る。★HTTPSにしたら必ず true に戻すこと。
+	//	★HTTPのまま true にすると、ログインは成功しているのに次のページで
+	//	  必ずログイン画面に戻される。エラーも出ないので原因が分からない。
+	//	  練習中だけ .env に SECURE_COOKIES=false と書いて切る。
 	SecureCookies bool
 
 	// ▼ Nginxを前に置くときに必要な設定
 	//
-	//	Nginxを通すと、Ginから見た相手はNginxになってしまう。
-	//	本当のアクセス元は封筒の隅(ヘッダー)に書いてあるので、
-	//	「そのヘッダーを信じてよい相手」をここで指定する。
+	//	Nginxを通すとGinから見た相手はNginxになる。本当のアクセス元は
+	//	ヘッダーに書いてあるので、「そのヘッダーを信じてよい相手」を指定する。
 	//
-	//	郵便に例えると、転送されてきた手紙の差出人が
-	//	「転送してくれた人」になってしまう状態を直す設定です。
-	//
-	//	★空にすると誰も信用しない(開発中はこちら)。
-	//	  信用する相手を書かないまま外に晒すと、利用者がヘッダーを
-	//	  詐称してアクセス元を偽れてしまうので、必ず限定すること。
+	//	★空にすると誰も信用しない(開発中はこちら)。限定しないまま外に晒すと、
+	//	  利用者がヘッダーを詐称してアクセス元を偽れてしまう。
 	TrustedProxies []string
 
-	// 利用者が上げたファイル(プロフィールアイコンなど)の保存先。
+	// 利用者が上げたファイルの保存先。
 	//
-	//	★web/static と分ける理由
-	//	  static … 自分たちが用意したファイル。Gitに入れる。
-	//	  media  … 利用者が後から上げたファイル。Gitに入れない。
-	//	  static は箱を作り直せば元通りだが、media は消したら戻らない。
+	//	★static と分ける理由: static は自分たちが用意したものでGitに入れる。
+	//	  media は利用者が上げたもので、消したら戻らない。
 	//	  だから本番では media だけを箱の外の保管庫に置く。
 	UploadDir string
 
@@ -87,14 +65,12 @@ type Config struct {
 
 // Load = .env を読んで Config を組み立てて返す。起動時に1回だけ呼ぶ。
 //
-// ▼ *Config の * について
+// ★*Config の * は「中身のコピーではなく置き場所(住所)を渡す」の意味。
 //
-//	Config だと「設定の中身をまるごとコピーして渡す」、
-//	*Config だと「設定の置き場所(住所)を渡す」という意味になる。
 //	住所を渡せば全員が同じ1つの設定を見るので、コピーのズレが起きない。
 func Load() *Config {
 	// .env が無くてもエラーにしない。
-	// 本番(AWS)では .env ファイルではなく、サーバー側の環境変数を直接使うため。
+	// 本番(AWS)では .env ではなくサーバー側の環境変数を直接使うため。
 	if err := godotenv.Load(); err != nil {
 		log.Println("[config] .env が見つかりませんでした(環境変数を直接使います)")
 	}
@@ -117,7 +93,6 @@ func Load() *Config {
 	}
 
 	// ★本番で割り印が初期値のままだと、ログイン状態を偽造される。
-	//   起動時に気づけるよう、警告を出す。
 	if cfg.IsProduction() && cfg.SecretKey == "dev-secret-key-change-me" {
 		log.Println("[config] ⚠ 本番なのに SECRET_KEY が初期値のままです")
 	}
@@ -127,18 +102,16 @@ func Load() *Config {
 
 // IsProduction = 本番モードかどうか。
 //
-// ▼ func (c *Config) ... = Config に付いている関数(メソッド)
-//
-//	cfg.IsProduction() と書けるようになる。
+// func (c *Config) ... と書くと、cfg.IsProduction() と呼べるようになる。
 func (c *Config) IsProduction() bool {
 	return c.Env == "production"
 }
 
-// DSN = DBへの接続文字列を組み立てる。読み方:
+// DSN = DBへの接続文字列を組み立てる。
 //
 //	ユーザー:パスワード@tcp(住所:ポート)/DB名?オプション
 //
-// parseTime=true … DBの日時を Go の時刻として受け取る(無いと文字列のまま届く)
+// parseTime=true … DBの日時をGoの時刻として受け取る(無いと文字列のまま届く)
 // charset=utf8mb4 … 絵文字も扱える指定(utf8 だと絵文字でエラーになる)
 // loc=Asia%2FTokyo … 日本時間で扱う(無いと9時間ずれる)
 func (c *Config) DSN() string {
@@ -156,13 +129,9 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-// envBool = .env の "true"/"false" という文字を、Goの true/false に変換する。
+// envList = カンマ区切りの環境変数を一覧にする。空なら nil。
 //
-// .env に書けるのは文字だけなので、"false" をそのまま使うと
-// 「中身のある文字 = true」と判定されてしまう。その事故を防ぐ。
-// envList = カンマ区切りの環境変数を一覧にする。
-//
-// 空なら nil を返す。nil は「誰も信用しない」の意味になる。
+// nil は「誰も信用しない」の意味になる。
 //
 //	TRUSTED_PROXIES=172.18.0.0/16   → ["172.18.0.0/16"]
 //	TRUSTED_PROXIES=(未設定)         → nil
@@ -181,6 +150,11 @@ func envList(key string) []string {
 	return out
 }
 
+// envBool = .env の "true"/"false" という文字を、Goの true/false に変換する。
+//
+// ★.env に書けるのは文字だけなので、"false" をそのまま使うと
+//
+//	「中身のある文字 = true」と判定されてしまう。その事故を防ぐ。
 func envBool(key string, fallback bool) bool {
 	value := os.Getenv(key)
 	if value == "" {

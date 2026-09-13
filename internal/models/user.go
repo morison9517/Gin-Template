@@ -59,20 +59,16 @@ type User struct {
 
 // TableName = この設計図が対応する表の名前。
 //
-// 指定しなくてもGORMが自動で "users" と決めてくれるが、
-// 名前が勝手に決まると探しにくいので、明示しておく。
+// 書かなくてもGORMが "users" と決めるが、探しにくいので明示しておく。
 func (User) TableName() string {
 	return "users"
 }
 
 // SetPassword = 生のパスワードを、元に戻せない形に変換して保存する。
 //
-// ▼ (u *User) の書き方について
+// ★(u *User) のアスタリスクは「本人を書き換える」の意味。
 //
-//	アスタリスクが付いていると「本人を書き換える」、
-//	付いていないと「コピーを触るだけ」という意味になる。
-//	保存内容を書き換えたいので、ここでは付ける必要がある。
-//	★書き忘れると「なぜかパスワードが空のまま」になる。
+//	付け忘れるとコピーを触るだけになり、パスワードが空のままになる。
 func (u *User) SetPassword(password string) error {
 	// bcrypt = パスワード専用の変換方式。
 	// わざと計算に時間がかかるように作られていて、総当たり攻撃をやりにくくしている。
@@ -92,28 +88,20 @@ func (u *User) CheckPassword(password string) bool {
 	return err == nil
 }
 
-// =============================================================================
 // ★ここから自分たちの表を書きはじめる
 //
-//	新しいモデルを作ったら internal/database/database.go の Migrate() の
-//	リストに1行足すこと。忘れると表が作られない。
+//	作ったら database.go の Migrate() に1行足すこと。忘れると表が作られない。
 //
 //	type Post struct {
 //	    ID    uint   `gorm:"primaryKey" json:"id"`
 //	    Title string `gorm:"size:200;not null" json:"title"`
 //
-//	    // ▼ 他の表と紐付けたいとき(「この投稿は誰が書いたか」)
-//	    //
-//	    //   *uint にすると「持ち主なし」も許される。
-//	    //   ログイン機能をOFFにしても動くようにしたいときはこうする。
+//	    // *uint にすると「持ち主なし」も許される(ログイン機能をOFFにしても動く)。
 //	    UserID *uint `gorm:"index" json:"user_id,omitempty"`
 //
-//	    // 番号から実物を引くショートカット。
-//	    // database.DB.Preload("User").Find(&posts) と書くと post.User に作者が入る。
-//	    // constraint:OnDelete:CASCADE = ユーザーが消えたら投稿も一緒に消す。
+//	    // Preload("User") で post.User に作者が入る。
+//	    // OnDelete:CASCADE = ユーザーが消えたら投稿も一緒に消す。
 //	    User *User `gorm:"constraint:OnDelete:CASCADE" json:"-"`
 //
 //	    CreatedAt time.Time `json:"created_at"`
 //	}
-//
-// =============================================================================

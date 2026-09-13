@@ -1,10 +1,10 @@
 // =============================================================================
 // router.go = URLの受付をまとめて組み立てる場所
 //
-// ★このファイルは土台です。普段は触りません。
+// ★このファイルは土台。普段は触らない。
 //
-//	URLを増やしたいときに触るのは handlers/ の中のファイルです。
-//	ここを触るのは「新しい担当ファイルを増やしたとき」だけ(下に2行足す)。
+//	URLを増やすときに触るのは handlers/ の中のファイル。
+//	ここを触るのは「新しい担当ファイルを増やしたとき」だけ(下に1行足す)。
 //
 // ▼ 上から順に「通り道」を作っていくイメージ
 //
@@ -19,11 +19,15 @@
 //	[成りすまし対策] 送信に整理券が付いているか確認する
 //	  ↓
 //	[各ページ]     handlers/ の中の関数
+//	  ↓
+//	[受け皿]       どれにも当てはまらなければエラー画面(handlers/error.go)
 //
 // =============================================================================
 package router
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"case_gin/internal/config"
@@ -46,25 +50,27 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// gin.Default() = 「アクセスの記録」と「異常時に落ちない仕掛け」が
-	// 最初から付いた受付。
-	// 異常時に落ちない仕掛けがあるので、1か所でエラーが出てもアプリ全体は止まらない。
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+
+	// ▼ ★gin.Recovery() ではなく CustomRecovery() を使う理由
+	//
+	//   どちらも「1か所でエラーが出てもアプリ全体を止めない」係。
+	//   違うのは止めたあとに何を返すかで、gin.Recovery() は中身が空の500
+	//   (真っ白な画面)を返す。それでは落ちたことすら伝わらない。
+	//   ★原因はこれまで通りログに出る(画面に出すとコードの中身が漏れる)。
+	r.Use(gin.Logger(), gin.CustomRecovery(func(c *gin.Context, _ any) {
+		handlers.ShowError(c, http.StatusInternalServerError)
+	}))
 
 	// アップロードの受け皿サイズ。
-	// ★本当の上限は本番のNginx側でも設定する(でないと巨大ファイルで詰まる)。
+	// ★本番のNginx側(docker/nginx/app.inc)とも同じ値にしておく。
 	r.MaxMultipartMemory = 16 << 20 // 16MB
 
 	// ★「アクセス元のIPをどこまで信用するか」の設定。
 	//
-	//   Nginxを前に置くと、Ginから見た相手はNginxになってしまう。
-	//   本当のアクセス元はヘッダーに書いてあるが、それを無条件で信じると
-	//   利用者が自分でヘッダーを詐称してIPを偽れてしまう。
-	//   そこで「このアドレスから来たヘッダーなら信じてよい」を指定する。
-	//
-	//   開発中は空(誰も信用しない)。本番は .env の TRUSTED_PROXIES に
-	//   Nginxのアドレス範囲を書く(手順は docs/DEPLOY.md)。
+	//   Nginxを前に置くとGinから見た相手はNginxになる。本当のアクセス元は
+	//   ヘッダーに書いてあるが、無条件で信じると利用者が自分で詐称できる。
+	//   開発中は空(誰も信用しない)。本番は .env の TRUSTED_PROXIES に書く。
 	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
 		return nil, err
 	}
@@ -77,21 +83,26 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	r.HTMLRender = renderer
 
 	// --- CSS / JS / 画像 ---
-	// ★ここを Use より先に書いている理由
-	//   Ginは「Useより後に登録したURL」にだけ仕掛けを適用する。
-	//   先に書くことで、画像1枚読むたびにログイン確認が走るのを避けられる。
+	// ★Use より先に書いている。Ginは「Useより後に登録したURL」にだけ
+	//   仕掛けを適用するので、画像1枚ごとにログイン確認が走るのを避けられる。
 	r.Static("/static", staticDir)
 
-	// --- 利用者が上げたファイル(プロフィールアイコンなど) ---
-	// ★開発モードのときだけ、Ginが自分で画像を配る。
-	//   本番ではNginxが配るので登録しない(compose.prod.yml 参照)。
+	// --- サイト直下に置かなければならない2つ ---
+	// ★検索エンジンは /robots.txt しか見に来ない(/static/ に置いても読まれない)。
+	// ★ブラウザは最後の手段として /favicon.ico を取りに来る。
+	//   ファイルが無ければ404が返るだけで害はない。
+	r.StaticFile("/robots.txt", staticDir+"/robots.txt")
+	r.StaticFile("/favicon.ico", staticDir+"/favicon.ico")
+
+	// --- 利用者が上げたファイル ---
+	// ★開発モードのときだけGinが配る。本番ではNginxが配る(compose.prod.yml)。
 	if !cfg.IsProduction() {
 		r.Static("/media", cfg.UploadDir)
 	}
 
 	// --- 全ページ共通の仕掛け(順番に意味がある) ---
-	// ★2つ目の引数が「HTTPSのときだけログイン状態を送る」の指定。
-	//   本番でも練習中はHTTPなので、.env の SECURE_COOKIES で切り替えられる。
+	// ★2つ目の引数が「HTTPSのときだけメモを送る」の指定。
+	//   練習中はHTTPなので .env の SECURE_COOKIES で切り替えられる。
 	r.Use(middleware.Session(cfg.SecretKey, cfg.IsProduction() && cfg.SecureCookies))
 	r.Use(middleware.LoadUser()) // セッションが読めないと誰か分からないので、後
 	r.Use(middleware.CSRF())
@@ -107,15 +118,16 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	}
 
 	// --- デモ(動作確認用のページ) ---
-	// ★必ず最後に取り付ける。
-	//   「自分たちのトップページが既にあるか」を見てから動くので、
-	//   先に取り付けると判定できず、URLの二重登録でGinが起動時に落ちる。
-	//   開発モードのときだけ。本番では取り付けないので絶対に出ない。
+	// ★必ず最後に取り付ける。「自分たちのトップページが既にあるか」を見てから
+	//   動くので、先に取り付けると判定できず、URLの二重登録で起動時に落ちる。
 	if !cfg.IsProduction() {
 		if err := demo.Register(r, cfg); err != nil {
 			return nil, err
 		}
 	}
+
+	// --- エラー画面(404など)の受け皿 ---
+	handlers.RegisterErrorRoutes(r)
 
 	return r, nil
 }

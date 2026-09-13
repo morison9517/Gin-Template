@@ -65,26 +65,22 @@ func Connect(cfg *config.Config) error {
 	return err
 }
 
-// Migrate = models/ に書いた設計図どおりにDBへ表を作る。
+// Migrate = models/ に書いた設計図どおりにDBへ表を作る。起動のたびに自動で走る。
 //
-// 起動のたびに自動で実行される。
-//   - 表が無ければ作る
-//   - 項目(列)が増えていれば足す
-//   - 既にあるデータは消えない
+// 表が無ければ作り、列が増えていれば足す。既にあるデータは消えない。
 //
-// ★注意:列の「型」を変えた場合(80文字→200文字など)は自動で追従しないことがある。
+// ★列の「型」を変えた場合(80文字→200文字など)は追従しないことがある。
 //
-//	そのときは作り直す(docs/SETUP.md の「DBを作り直す」を参照)。
+//	そのときは作り直す(docs/SETUP.md の「DBを作り直す」)。
 //
 // ★新しいモデルを作ったら、下のリストに1行足すこと。忘れると表が作られない。
-//
-// ※ デモ用の表(demo_todos)はここには書かない。
-//
-//	開発モードのときだけ internal/demo/demo.go が自分で用意するので、
-//	本番のDBには作られない。
 func Migrate() error {
 	return DB.AutoMigrate(
 		&models.User{},
+
+		// ログインの失敗回数を数えておく表。
+		// ★アプリの中の変数ではなくDBに置く理由は models/loginattempt.go に。
+		&models.LoginAttempt{},
 	)
 }
 
@@ -93,14 +89,14 @@ func Migrate() error {
 // 列の型を変えたときなど、形が合わなくなったときの復旧用。
 // 実行方法は docs/SETUP.md にある。
 func Reset() error {
-	// ★消す順番が大事
-	//   表どうしが紐付いている場合、参照している側(子)から先に消す。
+	// ★消す順番が大事。紐付いている表は、参照している側(子)から先に消す。
 	//   逆にすると「まだ使われている」と怒られて消せない。
-	//
-	//   "demo_todos" はデモ用の表。デモは本番のどの表とも紐付いていないので
-	//   順番は関係ない。無ければ何も起きないので、そのままでよい。
-	//   internal/demo/ を削除したら、この "demo_todos" も消してよい。
-	if err := DB.Migrator().DropTable("demo_todos", &models.User{}); err != nil {
+	//   "demo_todos" はデモ用。internal/demo/ を消したらこの行も消してよい。
+	if err := DB.Migrator().DropTable(
+		"demo_todos",
+		&models.User{},
+		&models.LoginAttempt{},
+	); err != nil {
 		return err
 	}
 	return Migrate()

@@ -320,6 +320,35 @@ code {
   color: var(--color-text-muted);
 }
 
+/* --- エラーページ(400 / 401 / 404 / 500) --- */
+.error-panel {
+  max-width: 520px;
+  margin: var(--space-7) auto;
+  text-align: center;
+}
+
+/* 数字。ここだけ大きくして、一目で何が起きたか分かるようにする。 */
+.error-code {
+  margin: 0;
+  font-size: 4rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--color-primary);
+}
+
+.error-name {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: 1.2rem;
+  color: var(--color-text-muted);
+
+  /* 英語の種類名は補足なので、本文より控えめにする。 */
+  font-weight: 500;
+}
+
+.error-message {
+  margin: 0 0 var(--space-6);
+}
+
 /* --- フッター --- */
 .site-footer {
   margin-top: var(--space-7);

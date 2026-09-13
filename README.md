@@ -116,7 +116,9 @@ case_gin/
 │   ├── handlers/           受付。URL → 処理
 │   │   ├── page.go           画面(HTML)を返す
 │   │   ├── auth.go           ログイン・新規登録
-│   │   └── api.go            JavaScript向けにデータだけ返す
+│   │   ├── api.go            JavaScript向けにデータだけ返す
+│   │   ├── error.go          エラー画面(404など)。文言の表はここ
+│   │   └── loginlimit.go     ログインの失敗回数を数えて締め出す
 │   ├── demo/               動作確認用のデモ(開発モード限定・触らない)
 │   │                       画面(page.html)も1枚完結でここに入っている
 │   ├── router/             受付をまとめて組み立てる(土台)
@@ -126,8 +128,10 @@ case_gin/
 │   ├── templates/
 │   │   ├── layouts/base.html   全ページ共通の型紙
 │   │   ├── pages/              各ページの中身(ここに置くだけで使える)
+│   │   │   └── error.html        404などで使う共通の1枚
 │   │   └── partials/           型紙が長くなったら部品を切り出す置き場
 │   └── static/                 CSS / JS / 画像
+│       └── robots.txt          検索エンジンへの案内(サイト直下に出している)
 │
 ├── media/                  利用者が上げたファイル(★中身はGitHubに上げない)
 │
@@ -136,7 +140,10 @@ case_gin/
 │
 ├── compose.yml             アプリとDBをまとめて動かす段取り表(開発用)
 ├── compose.prod.yml        本番用の段取り表(★開発中は使わない)
-├── docker/nginx/           本番でCSSと画像を配るNginxの設定
+├── docker/nginx/           本番のNginxの設定(3枚)
+│   ├── app.inc               中身の設定。下の2枚から読み込む1枚
+│   ├── prod.conf             HTTPのまま動かすとき(最初はこちら)
+│   └── prod-https.conf       証明書を取った後
 ├── Dockerfile              箱を組み立てるレシピ
 ├── .air.toml               保存したら自動で作り直す設定
 ├── go.mod / go.sum         買い物リストとレシート(全員が同じ部品を使うための記録)
@@ -167,6 +174,8 @@ case_gin/
 | URLと処理(画面) | `internal/handlers/page.go` |
 | URLと処理(データ) | `internal/handlers/api.go` |
 | ログイン | `internal/handlers/auth.go` |
+| エラーページの文言 | `internal/handlers/error.go` |
+| サイト名・説明文 | `internal/view/page.go` |
 
 `main.go` `router/` `view/` `config/` `database/` `middleware/` `compose.yml` `Dockerfile` は**土台**です。
 触る必要が出たら、**先にチームに共有してから**変更してください(全員に影響します)。
@@ -270,6 +279,22 @@ base.html(型紙)                    pages/index.html(中身)
 
 ---
 
+## 公開するときに要るものは、入れてあります
+
+**身内に見せるだけなら要らないが、外に出すと必ず要るもの**を最初から入れてあります。
+どれも**設定しなくても動き**、**要らなければファイルを消せば外れます。**
+
+| 入っているもの | 設定しないとどうなるか | いじる場所 |
+| --- | --- | --- |
+| **エラーページ**(404/500) | そのまま使える | 文言の表1つ(`internal/handlers/error.go`) |
+| **ログイン試行制限** | そのまま使える(5回失敗で15分) | 回数と時間の定数(`internal/handlers/loginlimit.go`) |
+| **検索・SNSでの見え方** | そのまま使える。説明文は書き換える | サイト名と説明文(`internal/view/page.go`) |
+| **HTTPS** | HTTPで動く。設定は用意済み | 設定を1行差し替え([docs/DEPLOY.md](docs/DEPLOY.md)) |
+
+> エラーページは、存在しないURL(例 `/hogehoge`)を開けば確認できます。
+
+---
+
 ## 3つのテンプレートの対応表
 
 同じ構成・同じ画面で作ってあるので、1つ分かれば他も読めます。
@@ -281,6 +306,9 @@ base.html(型紙)                    pages/index.html(中身)
 | データの形 | `models.py` | `internal/models/` | `main/models.py` |
 | 画面を返す | `routes.py` | `handlers/page.go` | `main/views.py` |
 | ログイン | `auth/routes.py` | `handlers/auth.go` | `accounts/views.py` |
+| ログイン試行制限 | `loginlimit.py` | `handlers/loginlimit.go` | `accounts/loginlimit.py` |
+| エラーページ | `errors.py` | `handlers/error.go` | `main/errors.py` |
+| 検索・SNS対応 | `seo.py` | `internal/view/page.go` | `main/context_processors.py` |
 | 型紙 | `base.html`(Jinja) | `base.html`(Go) | `base.html`(Django) |
 | 表を作る | `flask init-db` | 起動時に自動 | 起動時に自動 |
 | 表の形を変える | 作り直し(データ消滅) | 列の追加のみ可 | **データを保ったまま変更可** |

@@ -17,10 +17,13 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,10 +36,7 @@ import (
 
 // RegisterAuthRoutes = ログイン関係のURLを登録する。
 //
-// ▼ Group("/auth") = URLの頭に共通の文字を付けるまとめ役
-//
-//	下で "/login" と書いたものが、実際には "/auth/login" になる。
-//	関連するURLがまとまるので、あとから場所を変えるのも1か所で済む。
+// Group("/auth") を挟むので、下の "/login" は実際には "/auth/login" になる。
 func RegisterAuthRoutes(r *gin.Engine) {
 	auth := r.Group("/auth")
 
@@ -170,6 +170,25 @@ func loginSubmit(c *gin.Context) {
 	username := strings.TrimSpace(c.PostForm("username"))
 	password := c.PostForm("password")
 
+	// ▼ ★何度も失敗している相手は、照合する前に追い返す(仕組みは loginlimit.go)
+	//
+	//   パスワードを見る前に止めるのが要点。照合の後ろに置くと、締め出し中でも
+	//   1回ずつ試させてしまい、時間をかければ当てられる状態のままになる。
+	ip := c.ClientIP()
+
+	if remaining := loginLockRemaining(ip); remaining > 0 {
+		middleware.Flash(c, "error", fmt.Sprintf(
+			"ログインの失敗が続いたため、一時的に制限しています。あと約%d分お待ちください。",
+			minutesToWait(remaining)))
+
+		c.HTML(http.StatusTooManyRequests, "login.html", view.Page(c, gin.H{
+			"Title":    "ログイン",
+			"Username": username,
+			"Next":     c.PostForm("next"),
+		}))
+		return
+	}
+
 	var user models.User
 
 	// Where(...).First(...) = 条件に合う最初の1件を取る。
@@ -185,8 +204,29 @@ func loginSubmit(c *gin.Context) {
 			log.Printf("[auth] ログイン時のDBエラー: %v", err)
 		}
 
-		middleware.Flash(c, "error", "ユーザー名またはパスワードが正しくありません。")
-		c.HTML(http.StatusOK, "login.html", view.Page(c, gin.H{
+		// 失敗を1回数える。5回目でこのアクセス元は15分締め出される。
+		recordLoginFailure(ip)
+
+		message := "ユーザー名またはパスワードが正しくありません。"
+		status := http.StatusOK
+
+		// ★今の失敗で締め出しに達したかを、その場で確かめて伝える。
+		//   これが無いと、次に押したときに初めて締め出しを知ることになり、
+		//   利用者からは「急に入れなくなった」としか見えない。
+		if remaining := loginLockRemaining(ip); remaining > 0 {
+			message = fmt.Sprintf(
+				"ログインの失敗が続いたため、一時的に制限しました。あと約%d分お待ちください。",
+				minutesToWait(remaining))
+			status = http.StatusTooManyRequests
+		} else if left := remainingLoginAttempts(ip); left > 0 && left <= 2 {
+			// ★残り回数を出す理由は loginlimit.go の remainingLoginAttempts に。
+			//   残り2回以下になってから出す(最初から出すと不安にさせるだけ)。
+			message += fmt.Sprintf(
+				"(あと%d回失敗すると、しばらくログインできなくなります)", left)
+		}
+
+		middleware.Flash(c, "error", message)
+		c.HTML(status, "login.html", view.Page(c, gin.H{
 			"Title":    "ログイン",
 			"Username": username,
 			"Next":     c.PostForm("next"),
@@ -194,10 +234,28 @@ func loginSubmit(c *gin.Context) {
 		return
 	}
 
+	// ★成功したら失敗の記録を消す。
+	//   これが無いと、正しく入れた後も前の失敗が残り続け、
+	//   次に1回打ち間違えただけで締め出されます。
+	clearLoginFailures(ip)
+
 	_ = middleware.Login(c, user.ID)
 	middleware.Flash(c, "success", "ログインしました。")
 
 	c.Redirect(http.StatusFound, safeRedirect(c.PostForm("next")))
+}
+
+// minutesToWait = 残り時間を「あと約◯分」に直す。
+//
+// ★切り上げること。切り捨てると残り30秒で「あと約0分」と出て、
+//
+//	待っても入れないので壊れているように見える。必ず1分以上を返す。
+func minutesToWait(remaining time.Duration) int {
+	minutes := int(math.Ceil(remaining.Minutes()))
+	if minutes < 1 {
+		return 1
+	}
+	return minutes
 }
 
 // safeRedirect = ログイン後の遷移先が安全か確かめる。

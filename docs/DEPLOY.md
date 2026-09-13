@@ -135,18 +135,151 @@ docker compose -f compose.prod.yml up -d --build
 
 やり方は2つあります。
 
-### ① サーバーの中で証明書を取る(Let's Encrypt)
+| | Let's Encrypt(サーバーの中で取る) | AWSのロードバランサー |
+| --- | --- | --- |
+| 費用 | **無料** | 動かしているだけで月20ドル前後 |
+| 更新 | 90日ごと(自動にできる) | AWSが自動でやる |
+| 設定 | **このテンプレートに用意済み** | VPC・サブネット2つ・ターゲットグループ |
+| 向き | サーバー1台 | 複数台に増やす前提 |
 
-無料です。90日ごとの更新が必要ですが、自動化できます。
-サーバー1台の構成ならこちらが安く、設定も少なくて済みます。
+**サーバー1台なら Let's Encrypt です。以下はその手順です。**
 
-### ② AWSのロードバランサーに任せる
+> ロードバランサーを使う場合、アプリ側は何も変えません。
+> HTTPSはAWS側で終わらせて、サーバーにはHTTPで届きます。
+> `prod.conf`(HTTP版)のままで正しく動きます。
+> `X-Forwarded-Proto` が「元はHTTPSだった」と Gin に伝えているからです。
 
-証明書の更新が自動になりますが、**動かしているだけで月20ドル前後かかります。**
-VPC・サブネット2つ・ターゲットグループの設定も必要です。
+### 先に確かめること(★ここを飛ばすと必ず失敗します)
 
-> どちらの場合も、`docker/nginx/prod.conf` に443番の設定を足し、
-> `compose.prod.yml` の nginx に証明書の置き場所をマウントします。
+- **ドメインのAレコードが、このサーバーのIPを指していること**
+
+  証明書は「そのドメインを開いたら本当にあなたのサーバーが出るか」を
+  確かめてから発行されます。向いていなければ、何度試しても取れません。
+
+  ```bash
+  nslookup 自分のドメイン
+  ```
+
+- **80番と443番が外から入れること**(AWSならセキュリティグループ)
+
+  80番は「もうHTTPSだから要らない」と思って閉じがちですが、
+  **証明書の確認はHTTPで来ます。**閉じると取得も更新もできません。
+
+### ① HTTPのまま起動しておく
+
+```bash
+docker compose -f compose.prod.yml up -d
+```
+
+`http://自分のドメイン` が開けることを確認してください。
+**ここが開けない状態では、証明書は取れません。**
+
+### ② まず練習で取ってみる(★これを先にやる)
+
+```bash
+docker compose -f compose.prod.yml run --rm certbot certonly   --webroot -w /var/www/certbot   -d 自分のドメイン   --email 自分のメールアドレス --agree-tos --no-eff-email   --dry-run
+```
+
+`--dry-run` は練習用の指定です。**本物の証明書は作られませんが、
+本番と全く同じ確認が走ります。**
+
+なぜ練習を挟むかというと、Let's Encrypt には
+**「同じ内容は1週間に5回まで」という回数制限**があるからです。
+設定が合っているか分からないまま本番で何度も失敗すると、
+**その週はもうHTTPSにできません。**`--dry-run` は制限に数えられないので、
+ここで何度でも試せます。
+
+`The dry run was successful` と出たら次へ進みます。
+
+### ③ 本物を取る
+
+上のコマンドから `--dry-run` を外して、もう一度実行するだけです。
+
+```
+Successfully received certificate.
+```
+
+と出れば成功です。証明書は `certbot_conf` の保管庫に入りました。
+
+### ④ HTTPS版の設定に切り替える
+
+**2か所です。**
+
+1. `docker/nginx/prod-https.conf` の `example.com` を**自分のドメインに書き換える**
+
+   ```nginx
+   ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+   ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+   ```
+
+   ★ここの書き換え忘れが、HTTPS化でいちばん多いつまずきです。
+   証明書はあるのに Nginx が起動せず、原因が設定側にあると気づきにくい。
+
+2. `compose.prod.yml` の nginx の**1行を差し替える**
+
+   ```yaml
+   # 変更前
+   - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+   # 変更後
+   - ./docker/nginx/prod-https.conf:/etc/nginx/conf.d/default.conf:ro
+   ```
+
+そして Nginx を作り直します。
+
+```bash
+docker compose -f compose.prod.yml up -d nginx
+```
+
+`https://自分のドメイン` を開いて、鍵マークが付けば成功です。
+`http://` で開いても、自動でHTTPSへ移ります。
+
+> **起動しなかったら、先にログを見てください。**
+>
+> ```bash
+> docker compose -f compose.prod.yml logs nginx
+> ```
+>
+> `cannot load certificate` と出ていれば、1番のドメインの書き換え忘れです。
+> **HTTP版(`prod.conf`)に戻せばサイトはすぐ復帰します。**落ち着いて直せます。
+
+### ⑤ 自動更新を仕掛ける
+
+証明書は90日で切れます。**切れるとサイトが警告だらけになり、
+多くのブラウザは開くことすら止めます。**手で更新し続けるのは現実的ではないので、
+サーバー側の `cron`(決まった時刻に自動で実行する仕組み)に登録します。
+
+```bash
+crontab -e
+```
+
+開いたら、次の1行を足します(`/path/to/app` は自分の置き場所に変える)。
+
+```
+0 3,15 * * * cd /path/to/app && docker compose -f compose.prod.yml run --rm certbot renew --quiet && docker compose -f compose.prod.yml exec -T nginx nginx -s reload
+```
+
+- `0 3,15 * * *` = 毎日3時と15時。**1日2回で構いません**
+- `renew` は**期限が30日以内に迫ったときだけ**実際に更新します。
+  それ以外は何もせずに終わるので、毎日走らせても制限に当たりません
+- 更新しただけでは Nginx は古い証明書を持ったままです。
+  最後の `nginx -s reload` で読み直させます。**これを忘れると、
+  更新は成功しているのにサイトは期限切れのまま**になります
+
+### ⑥ 数日待ってから HSTS を有効にする
+
+`docker/nginx/prod-https.conf` の最後に、コメントアウトされた1行があります。
+
+```nginx
+# add_header Strict-Transport-Security "max-age=31536000" always;
+```
+
+有効にすると、ブラウザが「このサイトは今後HTTPSでしか開かない」と覚えます。
+安全になりますが、**一度覚えさせると1年間取り消せません。**
+
+その間に証明書が切れると、ブラウザはHTTPへ逃げることすら拒むので、
+**サイトが完全に開けなくなり、HTTPに戻して直すこともできません。**
+
+自動更新が実際に1回回ったのを確かめてから外してください。急ぐ理由はありません。
 
 ### ★HTTPSにしたら必ず戻すこと
 
@@ -156,9 +289,8 @@ VPC・サブネット2つ・ターゲットグループの設定も必要です�
 SECURE_COOKIES=true
 ```
 
-練習中に `False` にしていた場合、**戻し忘れるとログイン状態が
+練習中に `false` にしていた場合、**戻し忘れるとログイン状態が
 HTTPSでない経路でも持ち歩けてしまいます。**
-
 ---
 
 ## 5. よく使うコマンド
@@ -243,6 +375,68 @@ web のログを見てください。だいたい起動時のエラーです。
 docker compose -f compose.prod.yml logs web
 ```
 
+### **時々**502になる / しばらく待つと勝手に直る
+
+**★DBがメモリ不足で強制終了されています。**アプリのバグではありません。
+
+メモリ1GBのサーバー(AWSの `t3.micro` など無料枠でよく使うもの)で起きます。
+MySQL 8 は既定のままだと800MB近く使うので、アプリと合わせて足りなくなり、
+**OSが「いちばんメモリを食っている奴」としてMySQLを終了させます。**
+
+たちが悪いのは、この症状の出方です。
+
+- アプリのログにはエラーが出ない(アプリは正常に動いている)
+- 少し待つと `restart: always` でDBが戻ってくるので、勝手に直る
+- **再現しないので、何が悪いのか分からない**
+
+確かめ方はこれです。
+
+```bash
+docker compose -f compose.prod.yml ps
+```
+
+db の `STATUS` が `Up 30 seconds` のように**短い時間**になっていたら、
+さっき落ちて起き直した直後です。`docker compose -f compose.prod.yml logs db`
+に `Out of memory` や `killed` が出ていれば確定です。
+
+**このテンプレートの `compose.prod.yml` には、対策の4行を最初から入れてあります**
+(db の `command:` の部分)。それでも起きる場合は、サーバーのメモリを
+2GBに上げるか、スワップ(メモリが足りないときにディスクを借りる仕組み)を
+用意してください。
+
+```bash
+# スワップを2GB用意する(サーバー側で1回だけ)
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### 鍵マークが付かない / 「保護されていない通信」と出る
+
+まず、どちらの状態か切り分けます。
+
+```bash
+docker compose -f compose.prod.yml logs nginx
+```
+
+| ログの様子 | 原因 |
+| --- | --- |
+| `cannot load certificate` | `prod-https.conf` のドメインの書き換え忘れ |
+| 何も出ず、80番で普通に動いている | `compose.prod.yml` のマウント行が `prod.conf` のまま |
+| `certificate has expired` | 自動更新が回っていない(`nginx -s reload` 忘れが多い) |
+
+**証明書そのものの期限は、これで見られます。**
+
+```bash
+docker compose -f compose.prod.yml run --rm --entrypoint openssl certbot   x509 -enddate -noout -in /etc/letsencrypt/live/自分のドメイン/fullchain.pem
+```
+
+どの場合も、`compose.prod.yml` のマウント行を `prod.conf` に戻して
+`up -d nginx` すれば、**HTTPのサイトとしてはすぐ復帰します。**
+慌てて設定をいじる前に、先にサイトを生かしてから直してください。
+
 ### プロフィールアイコンが表示されない
 
 `media` の保管庫がNginxから見えていない可能性があります。
@@ -271,6 +465,9 @@ docker compose -f compose.prod.yml logs web
 - [ ] `/auth/login` が開ける
 - [ ] **CSSが当たっている**(見た目が崩れていない)
 - [ ] **新規登録 → ログイン → ログアウトが通る**
+- [ ] **`https://` で開けて、鍵マークが付いている**
+- [ ] **`http://` で開いたら、自動でHTTPSに移る**
+- [ ] **証明書の自動更新を `crontab` に登録した**(★これが無いと90日後に止まります)
 - [ ] `docker compose -f compose.prod.yml restart` して、データが残っている
 
 **最後の1つが特に大事です。** 再起動でデータが消えるなら、保管庫の設定が間違っています。
