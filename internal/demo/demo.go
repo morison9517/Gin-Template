@@ -113,7 +113,7 @@ func index(c *gin.Context) {
 		"CSRFToken":   middleware.CSRFToken(c),
 
 		// ★真偽値だけを渡している(利用者オブジェクトそのものは渡さない)。
-		//   画面に名前を出すと .Username を読むことになり、チームが
+		//   画面に名前を出すと .Username を読むことになり、開発する人が
 		//   Userの項目名を変えた日にデモが壊れる。
 		//   「ログイン中か」だけならフレームワーク側の概念なので絶対に壊れない。
 		"LoggedIn": middleware.CurrentUser(c) != nil,

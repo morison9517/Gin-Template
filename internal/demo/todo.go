@@ -41,7 +41,7 @@ type Todo struct {
 //
 // ★demo_ を付けている理由
 //
-//	"todos" のままだと、チームが自分たちのTodoを作ったときに
+//	"todos" のままだと、開発する人が自分たちのTodoを作ったときに
 //	同じ表を取り合ってしまう。デモが名前を1つ占領しないよう、必ず demo_ を付ける。
 func (Todo) TableName() string {
 	return "demo_todos"

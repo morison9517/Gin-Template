@@ -34,7 +34,7 @@ const siteName = "Gin Template Demo"
 //
 // ★120文字前後に収めること。長いと検索結果で途中から切られる。
 // ★ページごとに変えたいときは、ハンドラ側で "Description" を渡す。
-const defaultDescription = "Gin(Go)のハッカソン用テンプレート。docker compose up だけで開発環境が立ち上がります。"
+const defaultDescription = "Gin(Go)のWebアプリ開発テンプレート。docker compose up だけで開発環境が立ち上がります。"
 
 // ogpImage = SNSに貼ったときに出るサムネイル画像。
 //
