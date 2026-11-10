@@ -92,12 +92,23 @@ func Load() *Config {
 		DBPassword: env("DB_PASSWORD", "hack_password"),
 	}
 
-	// ★本番で割り印が初期値のままだと、ログイン状態を偽造される。
-	if cfg.IsProduction() && cfg.SecretKey == "dev-secret-key-change-me" {
-		log.Println("[config] ⚠ 本番なのに SECRET_KEY が初期値のままです")
+	// ★本番で割り印が初期値のままなら、起動しない。
+	//   初期値はGitHubで誰でも読めるので、そのまま動かすとログイン状態を偽造される。
+	//   警告だけだとログに流れて見落とすため、止めて気づかせる。
+	if cfg.IsProduction() && isDefaultSecretKey(cfg.SecretKey) {
+		log.Fatalln("[起動失敗] 本番なのに SECRET_KEY が初期値のままです。" +
+			".env の SECRET_KEY を長いランダムな文字列に変えてください(docs/DEPLOY.md)")
 	}
 
 	return cfg
+}
+
+// isDefaultSecretKey = 割り印が「配っている初期値」のままか。
+//
+// 初期値は2つある(.env が無いときの値と、.env.example に書いてある値)。
+func isDefaultSecretKey(key string) bool {
+	return key == "dev-secret-key-change-me" ||
+		key == "please-change-this-to-a-long-random-string"
 }
 
 // IsProduction = 本番モードかどうか。

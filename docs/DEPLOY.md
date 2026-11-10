@@ -63,8 +63,8 @@ python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 > ★`APP_ENV=development` のまま本番に出すと、起動ログが冗長になり、
 > 内部の情報が出やすくなります。必ず `production` にしてください。
 >
-> ★`SECRET_KEY` を見本のままにすると、Ginは**起動を拒否します。**
-> 割り印が初期値のままだとログイン状態を偽造されるためです。
+> ★`APP_ENV=production` で `SECRET_KEY` が見本のままだと、アプリは**起動を拒否します。**
+> 見本の値はGitHubで誰でも読めるので、そのまま動かすとログイン状態を偽造されるためです。
 
 ---
 
@@ -462,8 +462,8 @@ docker compose -f compose.prod.yml run --rm --entrypoint openssl certbot   x509 
 **本番でこれを書くと、固めた実行ファイルが隠れて起動しません。**
 本番でいちばん多い事故です。
 
-`SECRET_KEY` を見本のままにしている場合も、Ginは起動を拒否します。
-ログに理由が出ているので確認してください。
+`SECRET_KEY` を見本のままにしている場合も、アプリは起動を拒否します。
+ログに `[起動失敗]` で始まる行が出ているので確認してください。
 
 ---
 

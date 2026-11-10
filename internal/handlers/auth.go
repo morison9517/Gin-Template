@@ -285,6 +285,13 @@ func safeRedirect(target string) string {
 		return fallback
 	}
 
+	// ★バックスラッシュ入りも弾く。ブラウザは \ を / と同じに扱うので、
+	//   "/\evil.com" は上の確認をすり抜けたうえで "//evil.com" として外部へ飛ぶ。
+	//   自サイトのURLに \ が入ることは無いので、含まれていたら丸ごと断る。
+	if strings.Contains(target, `\`) {
+		return fallback
+	}
+
 	return target
 }
 
